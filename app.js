@@ -3,6 +3,7 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const mongoose = require('mongoose');
+const lodash = require('lodash');
 
 const app = express();
 
@@ -17,6 +18,7 @@ mongoose.connect('mongodb://localhost:27017/todolistDB', {
   useNewUrlParser: true,
   useUnifiedTopology: true
 });
+
 
 const itemsSchema = {
   name: String
@@ -40,6 +42,13 @@ const defaultItems = []
 // item.save();
 
 Item.insertMany(defaultItems,(err)=>{});
+
+const listSchema = {
+  name: String,
+  items:[itemsSchema]
+}
+
+const List = mongoose.model("List",listSchema);
 
 app.get("/", function (req, res) {
 
@@ -71,38 +80,77 @@ app.get("/", function (req, res) {
 app.post("/", function (req, res) {
 
   const itemName = req.body.newItem;
+  const listName = req.body.list;
 
   const newItem = new Item ({
     name: itemName
   })
 
-  newItem.save();
+  if (listName === "Today") {
+    newItem.save();
+    res.redirect('/');
+  }else{
+   List.findOne({name:listName}, (err,results) => {
+     results.items.push(newItem);
+     results.save();
+     res.redirect('/'+listName)
+   })
+    
+  }
 
-  res.redirect('/');
+  
 })
 
 app.post('/delete', (req,res)=>{
   const itemId= req.body.checkbox;
+  const listName = req.body.listName;
 
-  Item.deleteOne({_id:itemId},(err)=>{
-    if(err){
-      console.log(err)
-    }else{
-      console.log("Item deleted sucessfully")
-    }
-  })
-  res.redirect('/')
-})
-
+  if (listName === "Today") {
+    Item.deleteOne({_id:itemId},(err)=>{
+      if(err){
+        console.log(err)
+      }else{
+        console.log("Item deleted sucessfully")
+      }
+    })
+    res.redirect('/')
+  }else{
+    List.findOneAndUpdate({name:listName},{$pull:{items:{_id: itemId}}},(err, results)=>{
+      if (!err){
+        res.redirect('/'+ listName);
+      }
+    })
+  }
 
  
+})
 
-app.get("/work", function (req, res) {
-  res.render("list", {
-    listTitle: "Work List",
-    newListItems: workItems
+app.get("/:customListName",(req,res)=>{
+  const customListName = lodash.capitalize(req.params.customListName);
+  
+ 
+
+  List.findOne({ name: customListName},(err,results)=>{
+    if(!err) {
+     
+      if (!results){
+        const list = new List ({
+          name:customListName,
+          items: defaultItems
+        })
+        list.save();
+        res.redirect('/'+customListName);
+      }else{
+        res.render('list',{listTitle:results.name,newListItems:results.items});
+      }
+      
+    }else{
+      console.log(err);
+      
+    }
   });
-});
+ 
+})
 
 app.get("/about", function (req, res) {
   res.render("about");
